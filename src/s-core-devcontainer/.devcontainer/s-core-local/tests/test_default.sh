@@ -52,6 +52,11 @@ check "validate pip3 is working and has the correct version" bash -c "pip3 --ver
 check "validate black is working and has the correct version" bash -c "black --version | grep '${python_version}'"
 check "validate pytest is working and has the correct version" bash -c "pytest --version | grep '${pytest_version}'"
 check "validate basedpyright is working and has the correct version" bash -c "basedpyright --version | grep '${basedpyright_version}'"
+
+# reuse (FSFE REUSE compliance checker)
+. /usr/local/share/score-tools/lockfiles/python_tools.lock.sh
+check "validate reuse is working and has the correct version" bash -c "reuse --version | grep '${python_reuse}'"
+
 # cannot grep versions as they do not match the Python version
 check "validate virtualenv is working" bash -c "virtualenv --version"
 check "validate flake8 is working" bash -c "flake8 --version"

@@ -88,6 +88,10 @@ su $(ls /home) -c "uv tool install basedpyright@\"${basedpyright_version}\""
 # pytest
 su $(ls /home) -c "uv tool install pytest@\"${pytest_version}\""
 
+# reuse (FSFE REUSE compliance checker)
+. /usr/local/share/score-tools/lockfiles/python_tools.lock.sh
+su $(ls /home) -c "uv tool install reuse@\"${python_reuse}\""
+
 # sshpass
 apt-get install -y sshpass="${sshpass_version}*"
 

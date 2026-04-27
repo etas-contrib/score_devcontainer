@@ -35,6 +35,24 @@ if { [[ -f /.dockerenv ]] || [[ -f /run/.containerenv ]] || [[ -d /devcontainer 
     exec "${tool_name}" "$@"
 fi
 
+# Python tools incl their dependencies are managed via uvx instead of
+# rules_multitool. The whitelist and pinned versions live in python_tools.lock.sh.
+# If the tool is listed there, uvx_version will be set to the pinned version.
+. "${script_dir}/lockfiles/python_tools.lock.sh"
+uvx_version_var="python_${tool_name}"
+uvx_version="${!uvx_version_var:-}"
+if [[ -n "${uvx_version}" ]]; then
+    # Prefer a locally installed uvx; fall back to the Bazel-managed one.
+    if command -v uvx >/dev/null 2>&1; then
+        exec uvx "${tool_name}@${uvx_version}" "$@"
+    elif command -v bazel >/dev/null 2>&1; then
+        cd "${repository_root}"
+        exec bazel run "//tools:uvx" -- "${tool_name}@${uvx_version}" "$@"
+    fi
+    echo "Could not run '${tool_name}': uvx-managed tool, but neither uvx nor bazel found." >&2
+    exit 127
+fi
+
 if command -v bazel >/dev/null 2>&1; then
 cd "${repository_root}"
 exec bazel run "//tools:${tool_name}" -- "$@"

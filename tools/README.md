@@ -203,6 +203,30 @@ the distribution package manager, remain managed elsewhere.
 
 ---
 
+## Python Tools
+
+Some tools are Python packages rather than standalone platform-specific binaries.
+Adding these through `rules_py` would pull in heavy transitive dependencies
+(protobuf, java, c++, swift, kotlin), so we avoid that path entirely.
+
+Instead, Python tools are run via `uvx` (the tool runner shipped with `uv`).
+Since `uv` and `uvx` are already managed via `rules_multitool`, no additional
+Bazel rule dependencies are needed.
+
+Pinned versions live in `tools/lockfiles/python_tools.lock.sh` — a sourceable
+shell file that defines one `uvx_tool_<name>=<version>` variable per tool.
+To add a new Python tool, add a line to that file.
+
+`tools/run_tool.sh` dispatches Python tools automatically: if the requested tool
+name matches a variable in `python_tools.lock.sh`, it runs
+`uvx tool@version` (preferring a local `uvx`, falling back to the Bazel-managed
+one). Unrecognised names fall through to the regular `rules_multitool` path.
+
+Inside the DevContainer the tools are pre-installed via `uv tool install` during
+image build, so they are available directly on `PATH`.
+
+---
+
 ## Using From Another Repository
 
 There are two supported Bazel usage patterns for consumers outside this

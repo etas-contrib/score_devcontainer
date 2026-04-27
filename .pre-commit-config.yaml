@@ -35,11 +35,13 @@ repos:
         entry: tools/run_tool.sh shellcheck
         language: system
         types: [shell]
+      - id: reuse
+        name: reuse
+        entry: tools/run_tool.sh reuse lint
+        language: system
+        always_run: true
+        pass_filenames: false
   - repo: https://github.com/eclipse-score/tooling
     rev: 31ff8eee214e4e97ef8f5cb46e443273515b63ec
     hooks:
       - id: copyright
-  - repo: https://codeberg.org/fsfe/reuse-tool
-    rev: a1bb792acda6fd0724936b4ebbdbc8eceb9c0459 # v6.2.0
-    hooks:
-      - id: reuse-lint-file
