@@ -217,14 +217,21 @@
     "policy": "exact",
     "platforms": ["linux/x86_64"],
     "version": "2.21.4",
-    "amd64": {
-      "sha256": "6da9f3df228d4e162af877569240a627c1af22f6adbd26352b22357fb8bd7545"
-    },
     "omissions": {
       "linux/arm64": "The selected bundle has no supported Linux arm64 artifact"
     },
     "setup_script": "codeql.sh",
-    "requires": ["zstd"]
+    "requires": ["zstd"],
+    "binaries": [
+      {
+        "os": "linux",
+        "cpu": "x86_64",
+        "kind": "tar.zst",
+        "url": "https://github.com/github/codeql-action/releases/download/codeql-bundle-v{version}/codeql-bundle-linux64.tar.zst",
+        "sha256": "6da9f3df228d4e162af877569240a627c1af22f6adbd26352b22357fb8bd7545",
+        "destination": "/usr/local"
+      }
+    ]
   },
   "codeql_coding_standards": {
     "provider": "release",
@@ -255,13 +262,22 @@
     "policy": "exact",
     "platforms": ["linux/x86_64", "linux/arm64"],
     "version": "0.18.0",
-    "amd64": {
-      "sha256": "6735ea846241497094719792ad3d4f67b1d3123048693d34fcdf7190f8c2da4e"
-    },
-    "arm64": {
-      "sha256": "d73998efa01cbd501b82ad6266642464b78ecd9fc6224a60c9cb558182d52d88"
-    },
-    "setup_script": "bazel_compile_commands.sh"
+    "binaries": [
+      {
+        "os": "linux",
+        "cpu": "x86_64",
+        "kind": "deb",
+        "url": "https://github.com/kiron1/bazel-compile-commands/releases/download/v{version}/bazel-compile-commands_{version}-{codename}_amd64.deb",
+        "sha256": "6735ea846241497094719792ad3d4f67b1d3123048693d34fcdf7190f8c2da4e"
+      },
+      {
+        "os": "linux",
+        "cpu": "arm64",
+        "kind": "deb",
+        "url": "https://github.com/kiron1/bazel-compile-commands/releases/download/v{version}/bazel-compile-commands_{version}-{codename}_arm64.deb",
+        "sha256": "d73998efa01cbd501b82ad6266642464b78ecd9fc6224a60c9cb558182d52d88"
+      }
+    ]
   },
   "apt-transport-https": {
     "provider": "apt",

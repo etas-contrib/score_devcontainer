@@ -62,10 +62,24 @@ require `sudo`. `--destination` and `--tool-dir` select these directories.
 | `apt` | `providers.json` | Install the declared packages using their version policy |
 | `build-apt` | `providers.json` | Add temporary packages for build/setup; remove afterward |
 | `npm` | `providers.json` | Install npm packages in the caller's environment |
-| `setup` | `providers.json` | Run the declared tool-specific setup |
+| `setup` | `providers.json` | Install declared release artifacts, then run tool-specific setup |
 
-Definitions can name a script in [`setup/`](setup) with `setup_script`. This also
-applies to APT tools: OpenJDK needs `java.sh` to configure `JAVA_HOME` after
+Container release artifacts use `binaries` entries with the same `os`, `cpu`,
+`url` and `sha256` fields as native downloads. URLs can reference `{version}`
+from the owning definition and `{codename}` from the container's OS release.
+The installer downloads and verifies each artifact in a temporary directory;
+it removes that directory after installation, including on failure.
+
+`kind: "deb"` installs a package with APT, retaining dependency resolution.
+`kind: "tar.zst"` extracts a bundle into its absolute `destination`, using the
+environment's temporary zstd build dependency. These are container installation
+formats, independent of the portable native lockfiles consumed by Bazel.
+CodeQL omits its artifact and configuration on Linux ARM64. Version changes
+must update the per-platform checksums alongside the definition's `version`.
+
+Definitions needing configuration can name a script in [`setup/`](setup) with
+`setup_script`. A release such as bazel-compile-commands only needs its artifact.
+APT tools can also need configuration: OpenJDK uses `java.sh` to set `JAVA_HOME` after
 installation. Each script explains its purpose and inputs at the top.
 `install.py` passes metadata as environment variables, not command-line flags.
 Scripts can query `selected ENVIRONMENT TOOL` and `items TOOL FIELD` for optional

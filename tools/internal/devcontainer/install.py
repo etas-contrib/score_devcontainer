@@ -39,6 +39,8 @@ import tarfile
 import tempfile
 import urllib.request
 import zipfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 # Resolve from this file, not cwd, for direct execution and copied tools trees.
@@ -229,23 +231,10 @@ def _cmd_install(args: argparse.Namespace) -> int:
 
     for tool, binary in binaries:
         kind = binary["kind"]
-        url = binary["url"]
-        expected_sha256 = binary["sha256"]
         destination = dest_dir / tool
 
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp = Path(tmp)
-            download = tmp / "download"
-
-            urllib.request.urlretrieve(url, download)
-
-            actual = hashlib.sha256(download.read_bytes()).hexdigest()
-            if actual != expected_sha256:
-                raise SystemExit(
-                    f"Checksum mismatch for {tool}: "
-                    + f"expected {expected_sha256}, got {actual}"
-                )
-
+        with _download_artifact(tool, binary) as download:
+            tmp = download.parent
             if kind == "file":
                 _place_binary(download, destination)
             elif kind == "archive":
@@ -266,6 +255,72 @@ def _cmd_install(args: argparse.Namespace) -> int:
                 raise SystemExit(f"Unsupported kind '{kind}' for {tool}")
 
     return 0
+
+
+@contextmanager
+def _download_artifact(tool: str, binary: Binary) -> Iterator[Path]:
+    """Keep a verified artifact available until installation finishes, then remove it."""
+    with tempfile.TemporaryDirectory() as directory:
+        # APT identifies local packages by the .deb extension.
+        filename = "download.deb" if binary["kind"] == "deb" else "download"
+        download = Path(directory) / filename
+        urllib.request.urlretrieve(binary["url"], download)
+        # Bundles such as CodeQL are too large to read into memory at once.
+        with download.open("rb") as artifact:
+            actual = hashlib.file_digest(artifact, "sha256").hexdigest()
+        expected = binary["sha256"]
+        if actual != expected:
+            raise SystemExit(
+                f"Checksum mismatch for {tool}: expected {expected}, got {actual}"
+            )
+        yield download
+
+
+def _release_artifact(definition: dict, os_name: str, cpu: str) -> Binary | None:
+    """Resolve the selected container artifact before installing build dependencies."""
+    if "binaries" not in definition or os_name + "/" + cpu in definition.get(
+        "omissions", {}
+    ):
+        return None
+    binary = dict(_select_binary(definition, os_name, cpu))
+    values = {"version": definition["version"]}
+    if "{codename}" in binary["url"]:
+        values["codename"] = platform.freedesktop_os_release()["VERSION_CODENAME"]
+    binary["url"] = binary["url"].format(**values)
+    return binary
+
+
+def _install_release_artifact(tool: str, binary: Binary) -> None:
+    """Install container packages and bundles through the shared verified download."""
+    with _download_artifact(tool, binary) as download:
+        if binary["kind"] == "deb":
+            # Keep APT's dependency handling and the feature's package policy.
+            subprocess.run(
+                [
+                    "apt-get",
+                    "install",
+                    "-y",
+                    "--no-install-recommends",
+                    "--fix-broken",
+                    str(download),
+                ],
+                check=True,
+            )
+        else:
+            # Python's tarfile has no zstd support on the container's Python 3.12.
+            # The selected environment provides zstd as a temporary build package.
+            subprocess.run(
+                [
+                    "tar",
+                    "-I",
+                    "zstd",
+                    "-xf",
+                    str(download),
+                    "-C",
+                    binary["destination"],
+                ],
+                check=True,
+            )
 
 
 def _is_writable(path: str) -> bool:
@@ -352,6 +407,11 @@ def _cmd_install_environment(args: argparse.Namespace) -> int:
                     "platforms"
                 ] and system not in definition.get("omissions", {}):
                     raise SystemExit(f"Tool '{name}' is unsupported on {system}")
+                if definition["provider"] == "release":
+                    try:
+                        _release_artifact(definition, args.os, args.cpu)
+                    except SystemExit as exc:
+                        raise SystemExit(f"Tool '{name}': {exc}") from exc
 
     # Some tools need extra configuration, such as setting JAVA_HOME. Only
     # setup scripts shipped next to this installer can be selected.
@@ -427,6 +487,11 @@ def _apply_environment(args, selection, definitions, setup_scripts) -> int:
         subprocess.run(
             ["npm", "install", "-g", definitions[name]["package"]], check=True
         )
+    if "setup" in args.providers:
+        for name in selection.get("setup", []):
+            binary = _release_artifact(definitions[name], args.os, args.cpu)
+            if binary is not None:
+                _install_release_artifact(name, binary)
     # Pass variables to the setup processes. Python cannot change the
     # environment of the shell that launched this installer.
     if "setup" in args.providers and setup_scripts:

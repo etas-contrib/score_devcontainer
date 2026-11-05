@@ -34,6 +34,102 @@ TOOLS_DIR = Path(__file__).resolve().parents[1]
 
 
 class EnvironmentTest(unittest.TestCase):
+    def test_release_artifacts_are_verified_before_installation_and_removed_afterward(
+        self,
+    ) -> None:
+        # Local artifacts exercise real download and checksum handling. The APT
+        # and tar boundary is recorded so this test never changes host packages.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "release"
+            source.write_bytes(b"release artifact")
+            binary = {
+                "os": "linux",
+                "cpu": "arm64",
+                "url": source.as_uri(),
+                "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                "destination": str(root),
+            }
+            for kind in ("deb", "tar.zst"):
+                with self.subTest(kind=kind):
+                    binary["kind"] = kind
+                    downloads = []
+
+                    def record(command, *, check):
+                        self.assertTrue(check)
+                        path = Path(
+                            command[command.index("-xf") + 1]
+                            if kind == "tar.zst"
+                            else command[-1]
+                        )
+                        self.assertEqual(path.read_bytes(), source.read_bytes())
+                        downloads.append(path)
+
+                    with patch.object(
+                        installer.subprocess, "run", side_effect=record
+                    ) as run:
+                        installer._install_release_artifact("fixture", binary)
+                    self.assertEqual(run.call_count, 1)
+                    self.assertEqual(
+                        run.call_args.args[0][0], "apt-get" if kind == "deb" else "tar"
+                    )
+                    self.assertFalse(downloads[0].parent.exists())
+
+            binary["sha256"] = "0" * 64
+            with patch.object(installer.subprocess, "run") as run:
+                with self.assertRaisesRegex(
+                    SystemExit, "Checksum mismatch for fixture"
+                ):
+                    installer._install_release_artifact("fixture", binary)
+            run.assert_not_called()
+
+    def test_release_download_without_setup_script_is_installed_and_omitted_on_arm(
+        self,
+    ) -> None:
+        # A release such as bazel-compile-commands needs no configuration script.
+        # Its artifact must still be installed, while explicit omissions skip it.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            artifact = root / "release-1.deb"
+            artifact.write_bytes(b"local package")
+            definition = {
+                "provider": "release",
+                "version": "1",
+                "platforms": ["linux/x86_64"],
+                "omissions": {"linux/arm64": "No ARM artifact"},
+                "binaries": [
+                    {
+                        "os": "linux",
+                        "cpu": "x86_64",
+                        "kind": "deb",
+                        "url": root.as_uri() + "/release-{version}.deb",
+                        "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+                    }
+                ],
+            }
+            with (
+                patch.object(
+                    installer,
+                    "load_environments",
+                    return_value={"ci": {"setup": ["fixture"]}},
+                ),
+                patch.object(
+                    installer, "all_definitions", return_value={"fixture": definition}
+                ),
+                patch.object(installer.os, "geteuid", return_value=0),
+                patch.object(installer.subprocess, "run") as run,
+            ):
+                installer.main(
+                    ["install-environment", "ci", "--cpu", "x86_64", "--os", "linux"]
+                )
+                self.assertEqual(run.call_count, 1)
+                self.assertEqual(run.call_args.args[0][0], "apt-get")
+                run.reset_mock()
+                installer.main(
+                    ["install-environment", "ci", "--cpu", "arm64", "--os", "linux"]
+                )
+                run.assert_not_called()
+
     def test_rejects_invalid_selection_data_and_wrong_providers(self) -> None:
         cases = (
             ([], "must be a dictionary"),

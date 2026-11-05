@@ -12,28 +12,16 @@
 # SPDX-License-Identifier: Apache-2.0
 # *******************************************************************************
 
-# Install the CodeQL bundle and selected C/C++ query packs, configure CODEQL_HOME
-# for later terminals, and remove unused language tools to reduce image size.
-# install.py supplies codeql_version, checksums and query-pack versions as
-# environment variables. SCORE_TOOLS_INSTALLER and SCORE_TOOL_ENVIRONMENT let
-# this script query the selected pack bundle from the same tool definitions.
+# Configure the CodeQL bundle installed by install.py, fetch selected C/C++
+# query packs and remove unused language tools to reduce image size.
+# install.py supplies query-pack versions as environment variables.
+# SCORE_TOOLS_INSTALLER and SCORE_TOOL_ENVIRONMENT let this script query the
+# selected pack bundle from the same tool definitions.
 # shellcheck disable=SC2154
 set -euo pipefail
 
-ARCHITECTURE=$(dpkg --print-architecture)
-if [ "${ARCHITECTURE}" != "amd64" ]; then
-    echo "No CodeQL bundle selected for Linux ${ARCHITECTURE}" >&2
-    exit 1
-fi
-VARIANT=linux64
-SHA256SUM="${codeql_amd64_sha256}"
-
 codeql_install_dir="/usr/local"
-curl -L "https://github.com/github/codeql-action/releases/download/codeql-bundle-v${codeql_version}/codeql-bundle-${VARIANT}.tar.zst" -o /tmp/codeql.tar.zst
-echo "${SHA256SUM} /tmp/codeql.tar.zst" | sha256sum -c - || exit 1
-tar -I zstd -xf /tmp/codeql.tar.zst -C "${codeql_install_dir}"
 ln -s "${codeql_install_dir}"/codeql/codeql /usr/local/bin/codeql
-rm /tmp/codeql.tar.zst
 export CODEQL_HOME=${codeql_install_dir}/codeql
 echo "export CODEQL_HOME=${codeql_install_dir}/codeql" > /etc/profile.d/codeql.sh
 

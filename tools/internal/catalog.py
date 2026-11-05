@@ -34,6 +34,8 @@ class Binary(TypedDict):
     type: NotRequired[str]
     file: NotRequired[str]
     dir: NotRequired[str]
+    # Container-only release bundles can install a complete tree outside bin/.
+    destination: NotRequired[str]
 
 
 class ToolData(TypedDict):
@@ -229,6 +231,30 @@ def load_providers() -> dict:
                 or not definition["package"]
             ):
                 raise SystemExit(f"Missing npm package for '{name}'")
+        if definition["provider"] == "release" and "binaries" in definition:
+            if (
+                not isinstance(definition["binaries"], list)
+                or not definition["binaries"]
+            ):
+                raise SystemExit(f"Missing release artifacts for '{name}'")
+            for binary in definition["binaries"]:
+                if not isinstance(binary, dict) or binary.get("kind") not in (
+                    "deb",
+                    "tar.zst",
+                ):
+                    raise SystemExit(f"Unsupported release artifact for '{name}'")
+                if not all(
+                    isinstance(binary.get(field), str) and binary[field]
+                    for field in ("os", "cpu", "url", "sha256")
+                ):
+                    raise SystemExit(f"Incomplete release artifact for '{name}'")
+                if (
+                    binary["kind"] == "tar.zst"
+                    and not Path(binary.get("destination", "")).is_absolute()
+                ):
+                    raise SystemExit(
+                        f"Missing absolute release destination for '{name}'"
+                    )
     return providers
 
 
@@ -340,9 +366,9 @@ def load_setup_metadata() -> dict[str, str]:
             values[name] = value
 
     for name, definition in load_providers().items():
-        # Use only version and checksum fields. Other data, such as platform
+        # Use only version fields. Other data, such as platform
         # names containing slashes, cannot be used as shell variable names.
-        for field in ("version", "compatibility_version", "amd64", "arm64"):
+        for field in ("version", "compatibility_version"):
             if field in definition:
                 emit(name.replace("-", "_") + "_" + field, definition[field])
         # Unpinned APT tools can still have expected versions for feature tests.
